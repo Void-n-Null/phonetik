@@ -366,3 +366,231 @@ pub fn is_valid_base(s: &str) -> bool {
     };
     encode(cleaned) != 0
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ── Encode/decode roundtrips ────────────────────────────────────────
+
+    #[test]
+    fn roundtrip_all_consonants() {
+        let consonants = [
+            "B", "CH", "D", "DH", "F", "G", "HH", "JH", "K", "L", "M", "N", "NG", "P", "R", "S",
+            "SH", "T", "TH", "V", "W", "Y", "Z", "ZH",
+        ];
+        for &c in &consonants {
+            let id = encode(c);
+            assert_ne!(id, 0, "{c} should encode to a nonzero ID");
+            assert_eq!(decode(id), c, "decode(encode({c})) should roundtrip");
+        }
+    }
+
+    #[test]
+    fn roundtrip_all_vowels_all_stresses() {
+        let bases = [
+            "AA", "AE", "AH", "AO", "AW", "AY", "EH", "ER", "EY", "IH", "IY", "OW", "OY", "UH",
+            "UW",
+        ];
+        for &b in &bases {
+            for stress in 0..=2 {
+                let s = format!("{b}{stress}");
+                let id = encode(&s);
+                assert_ne!(id, 0, "{s} should encode to a nonzero ID");
+                assert_eq!(decode(id), s, "decode(encode({s})) should roundtrip");
+            }
+        }
+    }
+
+    #[test]
+    fn consonants_have_no_stress_variants() {
+        // Encoding "B0", "B1", "B2" should all just produce B (id 1),
+        // because consonants ignore the trailing digit — but only if the
+        // string is ≥ 3 chars. "B0" is 2 chars, so it goes through the
+        // non-digit path and encodes as 0 (unrecognized). This is correct:
+        // ARPAbet never appends stress digits to consonants.
+        assert_eq!(encode("B"), B);
+        assert_eq!(encode("B0"), 0, "B0 is not valid ARPAbet");
+    }
+
+    // ── Stress encoding layout ──────────────────────────────────────────
+
+    #[test]
+    fn stress_offset_math() {
+        assert_eq!(encode("AA0"), AA); // 25
+        assert_eq!(encode("AA1"), AA + 40); // 65
+        assert_eq!(encode("AA2"), AA + 80); // 105
+        assert_eq!(encode("UW0"), UW); // 39
+        assert_eq!(encode("UW1"), UW + 40); // 79
+        assert_eq!(encode("UW2"), UW + 80); // 119
+    }
+
+    #[test]
+    fn consonant_ids_are_sequential() {
+        assert_eq!(B, 1);
+        assert_eq!(ZH, 24);
+    }
+
+    // ── Lookup table correctness ────────────────────────────────────────
+
+    #[test]
+    fn is_vowel_table_covers_all_stresses() {
+        // Stressed vowels
+        assert!(IS_VOWEL[encode("AA1") as usize]);
+        assert!(IS_VOWEL[encode("EY2") as usize]);
+        // Unstressed vowels
+        assert!(IS_VOWEL[encode("AH0") as usize]);
+        // Consonants
+        assert!(!IS_VOWEL[B as usize]);
+        assert!(!IS_VOWEL[NG as usize]);
+        assert!(!IS_VOWEL[ZH as usize]);
+        // Zero (invalid)
+        assert!(!IS_VOWEL[0]);
+    }
+
+    #[test]
+    fn stress_of_table() {
+        assert_eq!(STRESS_OF[encode("AA0") as usize], 0);
+        assert_eq!(STRESS_OF[encode("AA1") as usize], 1);
+        assert_eq!(STRESS_OF[encode("AA2") as usize], 2);
+        // Consonants always 0
+        assert_eq!(STRESS_OF[B as usize], 0);
+        assert_eq!(STRESS_OF[S as usize], 0);
+    }
+
+    #[test]
+    fn stripped_table() {
+        assert_eq!(STRIPPED[encode("AA1") as usize], AA);
+        assert_eq!(STRIPPED[encode("AA2") as usize], AA);
+        assert_eq!(STRIPPED[encode("AA0") as usize], AA);
+        assert_eq!(STRIPPED[encode("UW2") as usize], UW);
+        // Consonants map to themselves
+        assert_eq!(STRIPPED[B as usize], B);
+        assert_eq!(STRIPPED[T as usize], T);
+    }
+
+    // ── Helper functions ────────────────────────────────────────────────
+
+    #[test]
+    fn is_vowel_fn() {
+        assert!(is_vowel(encode("AH1")));
+        assert!(is_vowel(encode("IY0")));
+        assert!(!is_vowel(B));
+        assert!(!is_vowel(0));
+        assert!(!is_vowel(255)); // out of range
+    }
+
+    #[test]
+    fn stress_fn() {
+        assert_eq!(stress(encode("AH0")), 0);
+        assert_eq!(stress(encode("AH1")), 1);
+        assert_eq!(stress(encode("AH2")), 2);
+        assert_eq!(stress(K), 0);
+        assert_eq!(stress(0), 0);
+        assert_eq!(stress(255), 0); // out of range
+    }
+
+    #[test]
+    fn strip_fn() {
+        assert_eq!(strip(encode("AH1")), AH);
+        assert_eq!(strip(encode("AH2")), AH);
+        assert_eq!(strip(encode("AH0")), AH);
+        assert_eq!(strip(K), K); // consonants unchanged
+        assert_eq!(strip(255), 255); // out of range passes through
+    }
+
+    #[test]
+    fn strip_all_mixed_sequence() {
+        let input = vec![K, encode("AE1"), T];
+        let stripped = strip_all(&input);
+        assert_eq!(stripped, vec![K, AE, T]);
+    }
+
+    #[test]
+    fn count_syllables_by_vowels() {
+        // "CAT" → K AE1 T → 1 syllable
+        let cat = vec![K, encode("AE1"), T];
+        assert_eq!(count_syllables(&cat), 1);
+
+        // "HELLO" → HH AH0 L OW1 → 2 syllables
+        let hello = vec![HH, encode("AH0"), L, encode("OW1")];
+        assert_eq!(count_syllables(&hello), 2);
+
+        // No vowels → 0
+        assert_eq!(count_syllables(&[K, T, S]), 0);
+
+        // Empty → 0
+        assert_eq!(count_syllables(&[]), 0);
+    }
+
+    #[test]
+    fn extract_stresses_from_phonemes() {
+        // "HELLO" → HH AH0 L OW1 → stresses [0, 1]
+        let hello = vec![HH, encode("AH0"), L, encode("OW1")];
+        assert_eq!(extract_stresses(&hello), vec![0, 1]);
+
+        // Only consonants → empty
+        assert_eq!(extract_stresses(&[K, T]), Vec::<i32>::new());
+    }
+
+    #[test]
+    fn is_vowel_base_fn() {
+        assert!(is_vowel_base(AA)); // 25
+        assert!(is_vowel_base(UW)); // 39
+        assert!(!is_vowel_base(B)); // consonant
+        assert!(!is_vowel_base(0)); // invalid
+                                    // Stressed vowels are NOT base — they have offsets applied
+        assert!(!is_vowel_base(encode("AA1")));
+    }
+
+    // ── Batch encode/decode ─────────────────────────────────────────────
+
+    #[test]
+    fn encode_all_and_decode_to_strings() {
+        let input = &["K", "AE1", "T"];
+        let encoded = encode_all(input);
+        assert_eq!(encoded, vec![K, encode("AE1"), T]);
+
+        let decoded = decode_to_strings(&encoded);
+        assert_eq!(decoded, vec!["K", "AE1", "T"]);
+    }
+
+    #[test]
+    fn encode_strings_owned() {
+        let input = vec!["HH".to_string(), "AH0".to_string()];
+        let encoded = encode_strings(&input);
+        assert_eq!(encoded, vec![HH, AH]);
+    }
+
+    // ── Edge cases ──────────────────────────────────────────────────────
+
+    #[test]
+    fn encode_invalid_inputs() {
+        assert_eq!(encode(""), 0);
+        assert_eq!(encode("GARBAGE"), 0);
+        assert_eq!(encode("XX"), 0);
+        assert_eq!(encode("A"), 0); // single letter, not a valid phoneme
+    }
+
+    #[test]
+    fn decode_invalid_ids() {
+        assert_eq!(decode(0), "");
+        assert_eq!(decode(255), "");
+        assert_eq!(decode(120), ""); // just past UW2 (119)
+    }
+
+    #[test]
+    fn is_valid_known_good_and_bad() {
+        assert!(is_valid("K"));
+        assert!(is_valid("AA1"));
+        assert!(!is_valid(""));
+        assert!(!is_valid("NOPE"));
+    }
+
+    #[test]
+    fn is_valid_base_strips_digit() {
+        assert!(is_valid_base("AA1"));
+        assert!(is_valid_base("AA"));
+        assert!(!is_valid_base("XX3"));
+    }
+}
