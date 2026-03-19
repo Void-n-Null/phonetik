@@ -62,15 +62,11 @@ println!("{}: {} syllables", info.word, info.syllable_count);
 
 ## How it works
 
-The entire CMU Pronouncing Dictionary is compiled into the binary at build time by `build.rs`. Every phoneme is encoded as a single `u8` — no strings in the hot path. Rhyme detection is algorithmic, not database-driven:
+The entire CMU Pronouncing Dictionary is compiled into the binary at build time. Every phoneme is encoded as a single byte — no strings in the hot path. Rhyme detection is algorithmic:
 
-| Rhyme type | Method | Storage |
-|---|---|---|
-| Perfect | Tail group partition (hash lookup) | 993 KB embedded blob |
-| Slant | Vowel distance matrix + coda suffix matching | Built at startup from dict |
-| Near | Precompiled coda edit-distance graph | 350 KB embedded blob |
-
-No precomputed rhyme databases. No 200 gzipped shard files. The library answers queries by doing math on byte arrays.
+- **Perfect rhymes** are resolved by grouping words that share identical sound from their last stressed vowel onward. One hash lookup.
+- **Slant rhymes** use a vowel distance matrix and coda suffix matching. Words sharing the same consonant ending but different vowels (love/move) are found by index traversal, not pairwise comparison.
+- **Near rhymes** walk a precomputed graph of consonant clusters that differ by one edit. Same vowel, slightly different ending (night/nice).
 
 ## Server
 
@@ -90,15 +86,6 @@ Disable the server feature for library-only use (drops axum, tokio, etc.):
 [dependencies]
 phonetik = { version = "0.1", default-features = false }
 ```
-
-## Numbers
-
-- **Binary size**: 7.5 MB (includes the entire dictionary)
-- **Library deps**: 4 (serde, serde_json, parking_lot, flate2)
-- **Startup**: ~100ms (HashMap construction from embedded blobs)
-- **Latency**: 0.1–0.7ms per request depending on endpoint
-- **Memory**: ~91 MB RSS (dominated by the dictionary HashMap)
-- **Dictionary**: 126,052 words from CMU Pronouncing Dictionary
 
 ## License
 
