@@ -79,6 +79,9 @@ pub mod syllable;
 /// Low-level phoneme encoding/decoding.
 pub mod phoneme;
 
+#[cfg(feature = "server")]
+pub mod server;
+
 use std::sync::Arc;
 
 use serde::Serialize;
