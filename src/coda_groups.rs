@@ -65,3 +65,56 @@ pub fn extract_nucleus_coda(phonemes: &[u8]) -> Option<(u8, Vec<u8>)> {
     }
     None
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn extract_nucleus_coda_primary_stress() {
+        // CAT → K AE1 T — nucleus AE, coda [T]
+        let cat = vec![phoneme::K, phoneme::encode("AE1"), phoneme::T];
+        let (nuc, coda) = extract_nucleus_coda(&cat).unwrap();
+        assert_eq!(nuc, phoneme::AE);
+        assert_eq!(coda, vec![phoneme::T]);
+    }
+
+    #[test]
+    fn extract_nucleus_coda_secondary_stress_fallback() {
+        // Word with only stress 2
+        let ph = vec![phoneme::K, phoneme::encode("AE2"), phoneme::T];
+        let (nuc, _coda) = extract_nucleus_coda(&ph).unwrap();
+        assert_eq!(nuc, phoneme::AE);
+    }
+
+    #[test]
+    fn extract_nucleus_coda_empty_coda() {
+        // SEE → S IY1 — nucleus IY, coda []
+        let see = vec![phoneme::S, phoneme::encode("IY1")];
+        let (nuc, coda) = extract_nucleus_coda(&see).unwrap();
+        assert_eq!(nuc, phoneme::IY);
+        assert!(coda.is_empty());
+    }
+
+    #[test]
+    fn extract_nucleus_coda_no_stressed_vowel() {
+        // All consonants — returns None
+        assert!(extract_nucleus_coda(&[phoneme::K, phoneme::T]).is_none());
+        // Empty
+        assert!(extract_nucleus_coda(&[]).is_none());
+    }
+
+    #[test]
+    fn build_produces_nonempty_groups() {
+        let dict = crate::dict::CmuDict::load();
+        let (groups, intern) = build(&dict);
+        assert!(!groups.is_empty());
+        assert!(!intern.is_empty());
+        // Every nucleus bucket should have at least one word
+        for nuclei in groups.values() {
+            for words in nuclei.values() {
+                assert!(!words.is_empty());
+            }
+        }
+    }
+}
