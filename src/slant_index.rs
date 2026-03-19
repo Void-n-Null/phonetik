@@ -378,3 +378,54 @@ pub struct SlantRhymeMatch {
     pub confidence: f64,
     pub nucleus: String,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Arc;
+
+    fn make_index() -> SlantIndex {
+        let dict = Arc::new(crate::dict::CmuDict::load());
+        let (coda_map, _) = crate::coda_groups::build(&dict);
+        SlantIndex::new(dict, Arc::new(coda_map))
+    }
+
+    #[test]
+    fn lookup_returns_slant_rhymes() {
+        let idx = make_index();
+        let result = idx.lookup("love", 50).unwrap();
+        assert!(!result.matches.is_empty());
+        // All matches should have confidence > 0
+        for m in &result.matches {
+            assert!(m.confidence > 0.0);
+        }
+    }
+
+    #[test]
+    fn lookup_respects_limit() {
+        let idx = make_index();
+        let result = idx.lookup("love", 5).unwrap();
+        assert!(result.matches.len() <= 5);
+    }
+
+    #[test]
+    fn lookup_nonexistent_word() {
+        let idx = make_index();
+        assert!(idx.lookup("xyzzyplugh", 50).is_none());
+    }
+
+    #[test]
+    fn matches_sorted_by_confidence_desc() {
+        let idx = make_index();
+        let result = idx.lookup("love", 50).unwrap();
+        for w in result.matches.windows(2) {
+            assert!(w[0].confidence >= w[1].confidence);
+        }
+    }
+
+    #[test]
+    fn coda_count_is_substantial() {
+        let idx = make_index();
+        assert!(idx.coda_count() > 100);
+    }
+}

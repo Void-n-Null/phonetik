@@ -238,3 +238,41 @@ pub struct NearRhymeMatch {
     #[serde(skip)]
     pub coda_len: usize,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Arc;
+
+    fn make_index() -> NearIndex {
+        let dict = Arc::new(crate::dict::CmuDict::load());
+        let (coda_map, _) = crate::coda_groups::build(&dict);
+        NearIndex::new(dict, Arc::new(coda_map))
+    }
+
+    #[test]
+    fn lookup_returns_near_rhymes() {
+        let idx = make_index();
+        let result = idx.lookup("night", 50).unwrap();
+        assert!(!result.matches.is_empty());
+    }
+
+    #[test]
+    fn lookup_respects_limit() {
+        let idx = make_index();
+        let result = idx.lookup("night", 5).unwrap();
+        assert!(result.matches.len() <= 5);
+    }
+
+    #[test]
+    fn lookup_nonexistent_word() {
+        let idx = make_index();
+        assert!(idx.lookup("xyzzyplugh", 50).is_none());
+    }
+
+    #[test]
+    fn neighbor_count_is_substantial() {
+        let idx = make_index();
+        assert!(idx.neighbor_count() > 100);
+    }
+}

@@ -208,3 +208,52 @@ pub struct PerfectRhymeMatch {
     pub phonemes: Vec<String>,
     pub syllables: usize,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Arc;
+
+    fn make_index() -> RhymeIndex {
+        RhymeIndex::new(Arc::new(crate::dict::CmuDict::load()))
+    }
+
+    #[test]
+    fn lookup_known_rhyme_group() {
+        let idx = make_index();
+        let result = idx.lookup("cat").unwrap();
+        let words: Vec<&str> = result.matches.iter().map(|m| m.word.as_str()).collect();
+        assert!(words.contains(&"BAT"), "cat should rhyme with bat");
+        assert!(words.contains(&"HAT"), "cat should rhyme with hat");
+    }
+
+    #[test]
+    fn lookup_excludes_query_word() {
+        let idx = make_index();
+        let result = idx.lookup("cat").unwrap();
+        let words: Vec<&str> = result.matches.iter().map(|m| m.word.as_str()).collect();
+        assert!(!words.contains(&"CAT"));
+    }
+
+    #[test]
+    fn lookup_nonexistent_word() {
+        let idx = make_index();
+        assert!(idx.lookup("xyzzyplugh").is_none());
+    }
+
+    #[test]
+    fn group_count_is_substantial() {
+        let idx = make_index();
+        assert!(idx.group_count() > 10_000);
+    }
+
+    #[test]
+    fn add_word_overlay() {
+        let idx = make_index();
+        let phonemes = crate::phoneme::encode_all(&["K", "AE1", "T"]);
+        idx.add_word("ZCAT", &phonemes);
+        let result = idx.lookup("cat").unwrap();
+        let words: Vec<&str> = result.matches.iter().map(|m| m.word.as_str()).collect();
+        assert!(words.contains(&"ZCAT"));
+    }
+}
