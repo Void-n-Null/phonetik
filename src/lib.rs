@@ -556,3 +556,210 @@ fn estimate_syllable_count(word: &str) -> usize {
         count
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn ph() -> Phonetik {
+        Phonetik::new()
+    }
+
+    // ── Clone ───────────────────────────────────────────────────────────
+
+    #[test]
+    fn clone_shares_data() {
+        let a = ph();
+        let b = a.clone();
+        assert_eq!(a.word_count(), b.word_count());
+        // Both should resolve the same word
+        assert!(a.lookup("cat").is_some());
+        assert!(b.lookup("cat").is_some());
+    }
+
+    // ── Lookup ──────────────────────────────────────────────────────────
+
+    #[test]
+    fn lookup_returns_word_info() {
+        let p = ph();
+        let info = p.lookup("extraordinary").unwrap();
+        assert_eq!(info.word, "EXTRAORDINARY");
+        assert!(info.syllable_count >= 5);
+        assert!(!info.phonemes.is_empty());
+        assert!(!info.syllables.is_empty());
+        assert!(info.variant_count >= 1);
+    }
+
+    #[test]
+    fn lookup_unknown_word() {
+        let p = ph();
+        assert!(p.lookup("xyzzyplugh").is_none());
+    }
+
+    // ── Syllable counting ───────────────────────────────────────────────
+
+    #[test]
+    fn syllable_count_known_word() {
+        let p = ph();
+        assert_eq!(p.syllable_count("cat"), 1);
+        assert_eq!(p.syllable_count("hello"), 2);
+    }
+
+    #[test]
+    fn syllable_count_unknown_falls_back_to_estimate() {
+        let p = ph();
+        let count = p.syllable_count("xyzzyplugh");
+        assert!(count >= 1);
+    }
+
+    #[test]
+    fn syllable_counts_batch() {
+        let p = ph();
+        let result = p.syllable_counts(&["hello world", "the cat"]);
+        assert_eq!(result.len(), 2);
+        assert!(result[0].total >= 3);
+        assert!(result[1].total >= 2);
+    }
+
+    // ── Rhymes ──────────────────────────────────────────────────────────
+
+    #[test]
+    fn rhymes_returns_perfect_first() {
+        let p = ph();
+        let results = p.rhymes("cat", 20);
+        assert!(!results.is_empty());
+        assert_eq!(results[0].rhyme_type, RhymeType::Perfect);
+    }
+
+    #[test]
+    fn perfect_rhymes_known_pair() {
+        let p = ph();
+        let results = p.perfect_rhymes("cat");
+        let words: Vec<&str> = results.iter().map(|r| r.word.as_str()).collect();
+        assert!(words.contains(&"BAT"));
+    }
+
+    #[test]
+    fn slant_rhymes_returns_results() {
+        let p = ph();
+        let results = p.slant_rhymes("love", 20);
+        assert!(!results.is_empty());
+        for r in &results {
+            assert_eq!(r.rhyme_type, RhymeType::Slant);
+        }
+    }
+
+    #[test]
+    fn near_rhymes_returns_results() {
+        let p = ph();
+        let results = p.near_rhymes("night", 20);
+        assert!(!results.is_empty());
+        for r in &results {
+            assert_eq!(r.rhyme_type, RhymeType::Near);
+        }
+    }
+
+    #[test]
+    fn rhymes_respects_limit() {
+        let p = ph();
+        let results = p.rhymes("the", 5);
+        assert!(results.len() <= 5);
+    }
+
+    #[test]
+    fn rhymes_deduplicates() {
+        let p = ph();
+        let results = p.rhymes("cat", 200);
+        let mut words: Vec<&str> = results.iter().map(|r| r.word.as_str()).collect();
+        let len_before = words.len();
+        words.sort();
+        words.dedup();
+        assert_eq!(words.len(), len_before, "duplicates found in rhyme results");
+    }
+
+    // ── Scan ────────────────────────────────────────────────────────────
+
+    #[test]
+    fn scan_iambic_pentameter() {
+        let p = ph();
+        let scan = p.scan("shall I compare thee to a summer's day");
+        assert_eq!(scan.syllable_count, 10);
+        assert!(scan.meter.name.contains("iambic"));
+        assert!(!scan.visual.is_empty());
+    }
+
+    #[test]
+    fn scan_empty_line() {
+        let p = ph();
+        let scan = p.scan("");
+        assert_eq!(scan.syllable_count, 0);
+    }
+
+    // ── Compare ─────────────────────────────────────────────────────────
+
+    #[test]
+    fn compare_rhyming_pair() {
+        let p = ph();
+        let cmp = p.compare("cat", "bat").unwrap();
+        assert!(cmp.similarity > 0.5);
+        assert_eq!(cmp.rhyme_type, RhymeType::Perfect);
+    }
+
+    #[test]
+    fn compare_unknown_word_returns_none() {
+        let p = ph();
+        assert!(p.compare("cat", "xyzzyplugh").is_none());
+    }
+
+    // ── Rhyme map ───────────────────────────────────────────────────────
+
+    #[test]
+    fn rhyme_map_finds_patterns() {
+        let p = ph();
+        let result = p.rhyme_map(&["the cat sat on the mat", "the bat sat on the hat"]);
+        assert!(!result.patterns.is_empty());
+    }
+
+    // ── contains / word_count ───────────────────────────────────────────
+
+    #[test]
+    fn contains_known_and_unknown() {
+        let p = ph();
+        assert!(p.contains("hello"));
+        assert!(!p.contains("xyzzyplugh"));
+    }
+
+    #[test]
+    fn word_count_is_substantial() {
+        let p = ph();
+        assert!(p.word_count() > 100_000);
+    }
+
+    // ── Private helpers ─────────────────────────────────────────────────
+
+    #[test]
+    fn format_stress_visual_fn() {
+        assert_eq!(format_stress_visual(&[0, 1, 0, 1]), "x / x /");
+        assert_eq!(format_stress_visual(&[]), "");
+    }
+
+    #[test]
+    fn tokenize_words_fn() {
+        assert_eq!(tokenize_words("hello, world!"), vec!["hello", "world"]);
+        assert_eq!(tokenize_words("don't stop"), vec!["don't", "stop"]);
+        assert!(tokenize_words("").is_empty());
+    }
+
+    #[test]
+    fn estimate_syllable_count_fn() {
+        assert_eq!(estimate_syllable_count("cat"), 1);
+        assert_eq!(estimate_syllable_count("hello"), 2);
+        assert_eq!(estimate_syllable_count("brr"), 1); // no vowels → 1
+    }
+
+    #[test]
+    fn default_impl_works() {
+        let p = Phonetik::default();
+        assert!(p.word_count() > 100_000);
+    }
+}
