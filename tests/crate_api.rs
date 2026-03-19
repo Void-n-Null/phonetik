@@ -5,8 +5,8 @@
 //! internal modules — only what's visible through `phonetik::*`.
 
 use phonetik::{
-    Comparison, LineScan, LineSyllableCount, MeterInfo, Phonetik, RhymeMatch, RhymeType, WordInfo,
-    WordSyllableCount,
+    Comparison, DocumentAnalyzeOptions, LineScan, LineSyllableCount, MeterInfo, Phonetik,
+    RhymeMatch, RhymeType, WordInfo, WordSyllableCount,
 };
 
 // ── Construction & cloning ──────────────────────────────────────────────
@@ -251,6 +251,35 @@ fn rhyme_map_single_line() {
     assert!(!result.words.is_empty());
 }
 
+// ── Document metadata ───────────────────────────────────────────────────
+
+#[test]
+fn analyze_document_summary_matches_line_count() {
+    let p = Phonetik::new();
+    let opts = DocumentAnalyzeOptions::default();
+    let doc = p.analyze_document(&["hello world", "the cat"], &opts);
+    assert_eq!(doc.version, phonetik::DOCUMENT_METADATA_VERSION);
+    assert_eq!(doc.summary.line_count, 2);
+    assert_eq!(doc.lines.len(), 2);
+    assert!(doc.summary.dictionary_coverage > 0.0);
+    assert!(doc.lines[0].prosody_fingerprint.contains(':'));
+    assert!(doc.rhyme_map.is_none());
+}
+
+#[test]
+fn analyze_document_can_embed_rhyme_map() {
+    let p = Phonetik::new();
+    let opts = DocumentAnalyzeOptions {
+        include_rhyme_map: true,
+        ..Default::default()
+    };
+    let doc = p.analyze_document(&["the cat sat on the mat", "a bat and a hat"], &opts);
+    assert!(doc.rhyme_map.is_some());
+    let rm = doc.rhyme_map.as_ref().unwrap();
+    assert_eq!(rm.lines.len(), 2);
+    assert!(!rm.words.is_empty());
+}
+
 // ── Thread safety ───────────────────────────────────────────────────────
 
 #[test]
@@ -307,4 +336,11 @@ fn public_types_serialize_to_json() {
     let json = serde_json::to_value(&cmp).unwrap();
     assert!(json.get("similarity").is_some());
     assert!(json.get("rhymeType").is_some());
+
+    // DocumentMetadata
+    let doc = p.analyze_document(&["hello"], &DocumentAnalyzeOptions::default());
+    let json = serde_json::to_value(&doc).unwrap();
+    assert!(json.get("version").is_some());
+    assert!(json.get("summary").is_some());
+    assert!(json.get("lines").is_some());
 }

@@ -1,4 +1,4 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::dict::CmuDict;
 use crate::phoneme;
@@ -23,7 +23,7 @@ fn is_function_word(normalized: &str) -> bool {
 }
 
 /// Controls whether monosyllabic function words are demoted to unstressed.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum StressMode {
     /// Natural speech stress. Monosyllabic function words (I, the, to,

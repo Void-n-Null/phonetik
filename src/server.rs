@@ -44,6 +44,7 @@ pub fn router(engine: Phonetik) -> Router {
         .route("/rhymes/slant", get(slant_rhymes_handler))
         .route("/rhymes/near", get(near_rhymes_handler))
         .route("/rhymemap", post(rhymemap_handler))
+        .route("/document", post(document_handler))
         .layer(DefaultBodyLimit::max(64 * 1024))
         .layer(CorsLayer::permissive())
         .with_state(state)
@@ -325,6 +326,38 @@ async fn rhymemap_handler(
     Ok(Json(serde_json::to_value(result).expect("rhyme map JSON")))
 }
 
+// ── Document metadata ─────────────────────────────────────────────────
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct DocumentRequest {
+    lines: Vec<String>,
+    #[serde(default)]
+    stress_mode: Option<crate::StressMode>,
+    #[serde(default)]
+    include_rhyme_map: bool,
+}
+
+async fn document_handler(
+    State(state): State<Arc<AppState>>,
+    Json(req): Json<DocumentRequest>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
+    if req.lines.len() > 100 {
+        return Err(bad_request("Maximum 100 lines per request."));
+    }
+    let opts = crate::DocumentAnalyzeOptions {
+        stress_mode: req.stress_mode,
+        include_rhyme_map: req.include_rhyme_map,
+    };
+    let lines: Vec<&str> = req
+        .lines
+        .iter()
+        .map(|l| if l.len() > 500 { &l[..500] } else { l.as_str() })
+        .collect();
+    let result = state.engine.analyze_document(&lines, &opts);
+    Ok(Json(serde_json::to_value(result).expect("document JSON")))
+}
+
 // ── Error helpers ───────────────────────────────────────────────────────
 
 #[derive(Serialize)]
@@ -548,6 +581,52 @@ mod tests {
                 Request::builder()
                     .method("POST")
                     .uri("/rhymemap")
+                    .header("content-type", "application/json")
+                    .body(Body::from(body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(res.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn document_returns_summary_and_lines() {
+        let app = app();
+        let body = serde_json::json!({
+            "lines": ["hello world", "the cat sat"],
+            "includeRhymeMap": false,
+        })
+        .to_string();
+        let res = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/document")
+                    .header("content-type", "application/json")
+                    .body(Body::from(body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(res.status(), StatusCode::OK);
+        let v = body_json(res).await;
+        assert_eq!(v["summary"]["lineCount"], 2);
+        assert_eq!(v["lines"].as_array().unwrap().len(), 2);
+        assert!(v["lines"][0]["scan"]["syllableCount"].as_i64().unwrap() >= 1);
+        assert!(v["rhymeMap"].is_null());
+    }
+
+    #[tokio::test]
+    async fn document_too_many_lines_400() {
+        let app = app();
+        let lines: Vec<String> = (0..101).map(|i| format!("line {i}")).collect();
+        let body = serde_json::json!({ "lines": lines }).to_string();
+        let res = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/document")
                     .header("content-type", "application/json")
                     .body(Body::from(body))
                     .unwrap(),

@@ -84,7 +84,7 @@ pub mod server;
 
 use std::sync::Arc;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::dict::CmuDict;
 pub use crate::stress::StressMode;
@@ -340,23 +340,7 @@ impl Phonetik {
     /// - [`StressMode::Dictionary`] — raw CMUdict citation stress.
     pub fn scan_with_mode(&self, line: &str, mode: StressMode) -> LineScan {
         let analysis = self.stress_analyzer.analyze_line_with_mode(line, mode);
-        let meter_result = meter::MeterDetector::detect(&analysis.binary_pattern);
-        let visual = format_stress_visual(&analysis.binary_pattern);
-
-        LineScan {
-            text: line.to_string(),
-            stressed_display: analysis.stressed_display,
-            stress_pattern: analysis.stress_pattern,
-            binary_pattern: analysis.binary_pattern,
-            syllable_count: analysis.syllable_count,
-            visual,
-            meter: MeterInfo {
-                name: meter_result.meter_name,
-                foot_type: meter_result.foot_type,
-                foot_count: meter_result.foot_count,
-                regularity: meter_result.regularity,
-            },
-        }
+        Self::build_line_scan(line, &analysis)
     }
 
     /// Compare two words phonetically.
@@ -395,6 +379,138 @@ impl Phonetik {
         let owned: Vec<String> = lines.iter().map(|s| s.to_string()).collect();
         let opts = rhymemap::RhymeMapOptions::default();
         self.rhyme_mapper.analyze(&owned, &opts)
+    }
+
+    /// One-shot prosody metadata for many lines: per-line scansion, coverage stats,
+    /// aggregate meter vote, and optionally a full [`rhymemap::RhymeMapResult`].
+    pub fn analyze_document(&self, lines: &[&str], options: &DocumentAnalyzeOptions) -> DocumentMetadata {
+        use std::collections::HashMap;
+
+        if lines.is_empty() {
+            return DocumentMetadata {
+                version: DOCUMENT_METADATA_VERSION,
+                summary: DocumentSummary {
+                    line_count: 0,
+                    non_empty_line_count: 0,
+                    total_syllables: 0,
+                    total_word_tokens: 0,
+                    dictionary_word_tokens: 0,
+                    dictionary_coverage: 1.0,
+                    mean_syllables_per_line: 0.0,
+                    mean_meter_regularity: 0.0,
+                    dominant_meter: DocumentDominantMeter {
+                        meter_name: "none".into(),
+                        foot_type: "none".into(),
+                        foot_count: 0,
+                        supporting_line_count: 0,
+                    },
+                },
+                lines: vec![],
+                rhyme_map: None,
+            };
+        }
+
+        let stress_mode = options.stress_mode.unwrap_or_default();
+        let rhyme_map = if options.include_rhyme_map {
+            Some(self.rhyme_map(lines))
+        } else {
+            None
+        };
+
+        let non_empty_line_count = lines.iter().filter(|l| !l.trim().is_empty()).count();
+
+        let mut line_metas = Vec::with_capacity(lines.len());
+        let mut total_syllables = 0usize;
+        let mut total_word_tokens = 0usize;
+        let mut dictionary_word_tokens = 0usize;
+        let mut regularity_sum = 0f64;
+        let mut regularity_n = 0usize;
+        let mut meter_votes: HashMap<String, usize> = HashMap::new();
+
+        for (index, line) in lines.iter().enumerate() {
+            let analysis = self
+                .stress_analyzer
+                .analyze_line_with_mode(line, stress_mode);
+            let scan = Self::build_line_scan(line, &analysis);
+
+            let word_tokens = analysis.words.len();
+            let dictionary_words = analysis.words.iter().filter(|w| w.in_dictionary).count();
+            let estimated_words = word_tokens.saturating_sub(dictionary_words);
+
+            total_syllables += scan.syllable_count;
+            total_word_tokens += word_tokens;
+            dictionary_word_tokens += dictionary_words;
+
+            if scan.syllable_count > 0 {
+                regularity_sum += scan.meter.regularity;
+                regularity_n += 1;
+                *meter_votes.entry(scan.meter.name.clone()).or_insert(0) += 1;
+            }
+
+            line_metas.push(DocumentLineMetadata {
+                index,
+                text: (*line).to_string(),
+                word_tokens,
+                dictionary_words,
+                estimated_words,
+                prosody_fingerprint: compute_prosody_fingerprint(&scan),
+                scan,
+            });
+        }
+
+        let dominant_meter = dominant_from_votes(&meter_votes, &line_metas);
+
+        let dictionary_coverage = if total_word_tokens > 0 {
+            (dictionary_word_tokens as f64 / total_word_tokens as f64 * 10000.0).round() / 10000.0
+        } else {
+            1.0
+        };
+
+        let mean_syllables_per_line =
+            (total_syllables as f64 * 10000.0 / lines.len() as f64).round() / 10000.0;
+
+        let mean_meter_regularity = if regularity_n > 0 {
+            (regularity_sum / regularity_n as f64 * 10000.0).round() / 10000.0
+        } else {
+            0.0
+        };
+
+        DocumentMetadata {
+            version: DOCUMENT_METADATA_VERSION,
+            summary: DocumentSummary {
+                line_count: lines.len(),
+                non_empty_line_count,
+                total_syllables,
+                total_word_tokens,
+                dictionary_word_tokens,
+                dictionary_coverage,
+                mean_syllables_per_line,
+                mean_meter_regularity,
+                dominant_meter,
+            },
+            lines: line_metas,
+            rhyme_map,
+        }
+    }
+
+    fn build_line_scan(line: &str, analysis: &stress::LineStress) -> LineScan {
+        let meter_result = meter::MeterDetector::detect(&analysis.binary_pattern);
+        let visual = format_stress_visual(&analysis.binary_pattern);
+
+        LineScan {
+            text: line.to_string(),
+            stressed_display: analysis.stressed_display.clone(),
+            stress_pattern: analysis.stress_pattern.clone(),
+            binary_pattern: analysis.binary_pattern.clone(),
+            syllable_count: analysis.syllable_count,
+            visual,
+            meter: MeterInfo {
+                name: meter_result.meter_name,
+                foot_type: meter_result.foot_type,
+                foot_count: meter_result.foot_count,
+                regularity: meter_result.regularity,
+            },
+        }
     }
 
     // ── Dictionary access ───────────────────────────────────────────────
@@ -525,7 +641,123 @@ pub struct LineSyllableCount {
     pub total: usize,
 }
 
+/// Schema version for [`DocumentMetadata`]. Increment when the JSON shape changes incompatibly.
+pub const DOCUMENT_METADATA_VERSION: u32 = 1;
+
+/// Options for [`Phonetik::analyze_document`]. Suitable for JSON request bodies (`camelCase`).
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DocumentAnalyzeOptions {
+    /// Stress model: [`StressMode::Spoken`] when omitted.
+    #[serde(default)]
+    pub stress_mode: Option<StressMode>,
+    /// When true, embeds [`rhymemap::RhymeMapResult`] (same work as [`Phonetik::rhyme_map`]).
+    #[serde(default)]
+    pub include_rhyme_map: bool,
+}
+
+/// Full-document prosody and coverage metadata.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DocumentMetadata {
+    pub version: u32,
+    pub summary: DocumentSummary,
+    pub lines: Vec<DocumentLineMetadata>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rhyme_map: Option<rhymemap::RhymeMapResult>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DocumentSummary {
+    pub line_count: usize,
+    pub non_empty_line_count: usize,
+    pub total_syllables: usize,
+    pub total_word_tokens: usize,
+    pub dictionary_word_tokens: usize,
+    /// Fraction of word tokens resolved in CMUdict (0.0–1.0).
+    pub dictionary_coverage: f64,
+    pub mean_syllables_per_line: f64,
+    /// Mean of per-line meter regularity over lines with ≥1 syllable.
+    pub mean_meter_regularity: f64,
+    pub dominant_meter: DocumentDominantMeter,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DocumentDominantMeter {
+    pub meter_name: String,
+    pub foot_type: String,
+    pub foot_count: usize,
+    /// Lines (with scansion) whose `meter.name` matched this winning label.
+    pub supporting_line_count: usize,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DocumentLineMetadata {
+    pub index: usize,
+    pub text: String,
+    pub word_tokens: usize,
+    pub dictionary_words: usize,
+    pub estimated_words: usize,
+    pub prosody_fingerprint: String,
+    pub scan: LineScan,
+}
+
 // ── Private helpers ─────────────────────────────────────────────────────
+
+fn dominant_from_votes(
+    votes: &std::collections::HashMap<String, usize>,
+    line_metas: &[DocumentLineMetadata],
+) -> DocumentDominantMeter {
+    if votes.is_empty() {
+        return DocumentDominantMeter {
+            meter_name: "none".into(),
+            foot_type: "none".into(),
+            foot_count: 0,
+            supporting_line_count: 0,
+        };
+    }
+
+    let (winner_name, supporting_line_count): (String, usize) = votes
+        .iter()
+        .max_by(|a, b| a.1.cmp(b.1).then_with(|| a.0.cmp(b.0)))
+        .map(|(k, v)| (k.clone(), *v))
+        .expect("votes non-empty");
+
+    let template = line_metas.iter().find(|l| {
+        l.scan.syllable_count > 0 && l.scan.meter.name == winner_name
+    });
+
+    if let Some(l) = template {
+        DocumentDominantMeter {
+            meter_name: winner_name.clone(),
+            foot_type: l.scan.meter.foot_type.clone(),
+            foot_count: l.scan.meter.foot_count,
+            supporting_line_count,
+        }
+    } else {
+        DocumentDominantMeter {
+            meter_name: winner_name,
+            foot_type: "unknown".into(),
+            foot_count: 0,
+            supporting_line_count,
+        }
+    }
+}
+
+fn compute_prosody_fingerprint(scan: &LineScan) -> String {
+    let bits: String = scan
+        .binary_pattern
+        .iter()
+        .map(|b| if *b == 1 { '1' } else { '0' })
+        .collect();
+    format!(
+        "{}:{}:{}:{}",
+        scan.syllable_count, scan.meter.foot_type, scan.meter.foot_count, bits
+    )
+}
 
 fn format_stress_visual(binary: &[i32]) -> String {
     if binary.is_empty() {
