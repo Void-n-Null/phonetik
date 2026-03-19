@@ -206,3 +206,88 @@ pub struct MeterComparison {
     pub stress_agreement: f64,
     pub mismatch_positions: Vec<usize>,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn detect_iambic_pentameter() {
+        // x / x / x / x / x / — perfect iambic pentameter
+        let binary = vec![0, 1, 0, 1, 0, 1, 0, 1, 0, 1];
+        let result = MeterDetector::detect(&binary);
+        assert_eq!(result.foot_type, "iamb");
+        assert_eq!(result.foot_count, 5);
+        assert_eq!(result.regularity, 1.0);
+        assert!(result.meter_name.contains("iambic"));
+        assert!(result.meter_name.contains("pentameter"));
+    }
+
+    #[test]
+    fn detect_trochaic_tetrameter() {
+        // / x / x / x / x
+        let binary = vec![1, 0, 1, 0, 1, 0, 1, 0];
+        let result = MeterDetector::detect(&binary);
+        assert_eq!(result.foot_type, "trochee");
+        assert_eq!(result.foot_count, 4);
+        assert_eq!(result.regularity, 1.0);
+    }
+
+    #[test]
+    fn detect_anapestic_trimeter() {
+        // x x / x x / x x /
+        let binary = vec![0, 0, 1, 0, 0, 1, 0, 0, 1];
+        let result = MeterDetector::detect(&binary);
+        assert_eq!(result.foot_type, "anapest");
+        assert_eq!(result.foot_count, 3);
+    }
+
+    #[test]
+    fn detect_empty_input() {
+        let result = MeterDetector::detect(&[]);
+        assert_eq!(result.foot_type, "none");
+        assert_eq!(result.foot_count, 0);
+        assert_eq!(result.regularity, 0.0);
+    }
+
+    #[test]
+    fn irregularity_reduces_score() {
+        // Mostly iambic but with deviations
+        let binary = vec![0, 1, 0, 1, 1, 1, 0, 1, 0, 1];
+        let result = MeterDetector::detect(&binary);
+        assert!(result.regularity < 1.0);
+        assert!(!result.deviations.is_empty());
+    }
+
+    #[test]
+    fn compare_identical_patterns() {
+        let a = vec![0, 1, 0, 1, 0, 1];
+        let cmp = MeterDetector::compare(&a, &a);
+        assert!(cmp.same_meter);
+        assert!(cmp.same_length);
+        assert_eq!(cmp.stress_agreement, 1.0);
+        assert!(cmp.mismatch_positions.is_empty());
+    }
+
+    #[test]
+    fn compare_different_patterns() {
+        let a = vec![0, 1, 0, 1];
+        let b = vec![1, 0, 1, 0];
+        let cmp = MeterDetector::compare(&a, &b);
+        assert!(!cmp.same_meter);
+        assert_eq!(cmp.stress_agreement, 0.0);
+        assert_eq!(cmp.mismatch_positions.len(), 4);
+    }
+
+    #[test]
+    fn compare_different_lengths() {
+        let a = vec![0, 1, 0, 1];
+        let b = vec![0, 1, 0, 1, 0, 1];
+        let cmp = MeterDetector::compare(&a, &b);
+        assert!(cmp.same_meter);
+        assert!(!cmp.same_length);
+        // Extra positions are mismatches
+        assert!(cmp.mismatch_positions.contains(&4));
+        assert!(cmp.mismatch_positions.contains(&5));
+    }
+}
