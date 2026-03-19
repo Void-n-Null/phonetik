@@ -27,9 +27,6 @@ async fn main() {
         )
         .init();
 
-    let base_dir = std::env::current_dir().unwrap();
-    load_dotenv(&base_dir);
-
     let engine = Phonetik::new();
 
     let health_bytes = Bytes::from(serde_json::to_vec(&serde_json::json!({
@@ -66,25 +63,6 @@ async fn main() {
 
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
     axum::serve(listener, app).await.unwrap();
-}
-
-fn load_dotenv(base: &std::path::Path) {
-    for candidate in [base.join(".env"), base.join("../.env"), base.join("../../../.env")] {
-        if let Ok(contents) = std::fs::read_to_string(&candidate) {
-            for line in contents.lines() {
-                let trimmed = line.trim();
-                if trimmed.is_empty() || trimmed.starts_with('#') { continue; }
-                if let Some(eq) = trimmed.find('=') {
-                    let key = trimmed[..eq].trim();
-                    let val = trimmed[eq + 1..].trim();
-                    if !key.is_empty() {
-                        unsafe { std::env::set_var(key, val) };
-                    }
-                }
-            }
-            break;
-        }
-    }
 }
 
 // ── Health ──────────────────────────────────────────────────────────────
