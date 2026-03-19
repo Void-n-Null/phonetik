@@ -149,3 +149,121 @@ pub struct LineStress {
     pub syllable_count: usize,
     pub stressed_display: String,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Arc;
+
+    fn make_analyzer() -> StressAnalyzer {
+        StressAnalyzer::new(Arc::new(crate::dict::CmuDict::load()))
+    }
+
+    // ── Tokenizer ───────────────────────────────────────────────────────
+
+    #[test]
+    fn tokenize_simple_words() {
+        assert_eq!(tokenize("hello world"), vec!["hello", "world"]);
+    }
+
+    #[test]
+    fn tokenize_preserves_apostrophe_contractions() {
+        let tokens = tokenize("don't stop");
+        assert_eq!(tokens, vec!["don't", "stop"]);
+    }
+
+    #[test]
+    fn tokenize_g_drop_apostrophe() {
+        let tokens = tokenize("runnin' fast");
+        assert_eq!(tokens, vec!["runnin'", "fast"]);
+    }
+
+    #[test]
+    fn tokenize_strips_punctuation() {
+        let tokens = tokenize("hello, world!");
+        assert_eq!(tokens, vec!["hello", "world"]);
+    }
+
+    #[test]
+    fn tokenize_empty_string() {
+        assert_eq!(tokenize(""), Vec::<String>::new());
+    }
+
+    #[test]
+    fn is_g_drop_apostrophe_fn() {
+        let chars: Vec<char> = "runnin'".chars().collect();
+        assert!(is_g_drop_apostrophe(&chars, 0, 6));
+
+        let chars: Vec<char> = "don't".chars().collect();
+        assert!(!is_g_drop_apostrophe(&chars, 0, 3));
+
+        // Too short — "in'" starting at 0, apostrophe at 2
+        let chars: Vec<char> = "in'".chars().collect();
+        assert!(!is_g_drop_apostrophe(&chars, 0, 2));
+    }
+
+    // ── Stress estimation ───────────────────────────────────────────────
+
+    #[test]
+    fn estimate_stresses_monosyllabic() {
+        assert_eq!(estimate_stresses("CAT"), vec![1]);
+    }
+
+    #[test]
+    fn estimate_stresses_multisyllabic() {
+        // Default: stress on first syllable
+        let stresses = estimate_stresses("HELLO");
+        assert_eq!(stresses.len(), 2);
+        assert_eq!(stresses[0], 1);
+        assert_eq!(stresses[1], 0);
+    }
+
+    #[test]
+    fn estimate_stresses_no_vowels() {
+        // Consonant-only word gets 1 syllable with stress
+        assert_eq!(estimate_stresses("BRR"), vec![1]);
+    }
+
+    // ── Line analysis ───────────────────────────────────────────────────
+
+    #[test]
+    fn analyze_known_words() {
+        let a = make_analyzer();
+        let result = a.analyze_line("hello world");
+        assert!(result.syllable_count >= 3);
+        assert!(!result.words.is_empty());
+        assert!(result.words[0].in_dictionary);
+    }
+
+    #[test]
+    fn analyze_binary_pattern_is_zero_or_one() {
+        let a = make_analyzer();
+        let result = a.analyze_line("shall I compare thee to a summer's day");
+        for &b in &result.binary_pattern {
+            assert!(b == 0 || b == 1);
+        }
+    }
+
+    #[test]
+    fn analyze_unknown_word_marked() {
+        let a = make_analyzer();
+        let result = a.analyze_line("xyzzyplugh");
+        assert_eq!(result.words.len(), 1);
+        assert!(!result.words[0].in_dictionary);
+    }
+
+    #[test]
+    fn analyze_empty_line() {
+        let a = make_analyzer();
+        let result = a.analyze_line("");
+        assert_eq!(result.syllable_count, 0);
+        assert!(result.words.is_empty());
+    }
+
+    #[test]
+    fn stressed_display_is_nonempty_for_known_words() {
+        let a = make_analyzer();
+        let result = a.analyze_line("hello");
+        assert!(!result.stressed_display.is_empty());
+    }
+}
