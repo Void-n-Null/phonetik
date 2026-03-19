@@ -1,3 +1,4 @@
+use crate::distance;
 use crate::phoneme;
 
 #[derive(Clone)]
@@ -305,32 +306,8 @@ fn compute_tail_similarity(a: &[u8], b: &[u8]) -> f64 {
     if max_len == 0 {
         return 1.0;
     }
-    let dist = levenshtein_u8(a, b);
+    let dist = distance::levenshtein(a, b);
     1.0 - (dist as f64 / max_len as f64)
-}
-
-fn levenshtein_u8(source: &[u8], target: &[u8]) -> usize {
-    let (source, target) = if source.len() > target.len() {
-        (target, source)
-    } else {
-        (source, target)
-    };
-    let s_len = source.len();
-    let t_len = target.len();
-    let mut prev = vec![0usize; s_len + 1];
-    let mut curr = vec![0usize; s_len + 1];
-    for j in 0..=s_len {
-        prev[j] = j;
-    }
-    for i in 1..=t_len {
-        curr[0] = i;
-        for j in 1..=s_len {
-            let cost = if source[j - 1] == target[i - 1] { 0 } else { 1 };
-            curr[j] = (curr[j - 1] + 1).min(prev[j] + 1).min(prev[j - 1] + cost);
-        }
-        std::mem::swap(&mut prev, &mut curr);
-    }
-    prev[s_len]
 }
 
 fn round4(v: f64) -> f64 {

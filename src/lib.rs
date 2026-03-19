@@ -58,6 +58,8 @@ pub mod compare;
 #[doc(hidden)]
 pub mod dict;
 #[doc(hidden)]
+pub mod distance;
+#[doc(hidden)]
 pub mod meter;
 #[doc(hidden)]
 pub mod near_index;
