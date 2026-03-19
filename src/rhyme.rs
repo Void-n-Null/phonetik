@@ -313,3 +313,124 @@ fn compute_tail_similarity(a: &[u8], b: &[u8]) -> f64 {
 fn round4(v: f64) -> f64 {
     (v * 10000.0).round() / 10000.0
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::phoneme;
+
+    fn encode(s: &str) -> u8 {
+        phoneme::encode(s)
+    }
+
+    // ── Tail extraction ─────────────────────────────────────────────────
+
+    #[test]
+    fn get_rhyme_tail_primary_stress() {
+        // NIGHT → N AY1 T — tail from AY1 onward
+        let night = vec![phoneme::N, encode("AY1"), phoneme::T];
+        let tail = get_rhyme_tail(&night, 1);
+        assert_eq!(tail, vec![encode("AY1"), phoneme::T]);
+    }
+
+    #[test]
+    fn get_rhyme_tail_secondary_stress() {
+        let ph = vec![phoneme::N, encode("AY2"), phoneme::T];
+        let tail = get_rhyme_tail(&ph, 2);
+        assert_eq!(tail, vec![encode("AY2"), phoneme::T]);
+    }
+
+    #[test]
+    fn get_rhyme_tail_no_match() {
+        let ph = vec![phoneme::K, phoneme::T];
+        assert!(get_rhyme_tail(&ph, 1).is_empty());
+    }
+
+    #[test]
+    fn get_rhyme_tail_any_vowel_finds_last() {
+        let ph = vec![phoneme::K, encode("AE0"), phoneme::T];
+        let tail = get_rhyme_tail_any_vowel(&ph);
+        assert_eq!(tail, vec![encode("AE0"), phoneme::T]);
+    }
+
+    // ── Pairwise analysis ───────────────────────────────────────────────
+
+    #[test]
+    fn perfect_rhyme_cat_bat() {
+        let cat = vec![phoneme::K, encode("AE1"), phoneme::T];
+        let bat = vec![phoneme::B, encode("AE1"), phoneme::T];
+        let result = RhymeAnalyzer::analyze(&cat, &bat);
+        assert_eq!(result.rhyme_type, "perfect");
+        assert!(result.confidence > 0.9);
+    }
+
+    #[test]
+    fn identity_rhyme_same_word() {
+        let cat = vec![phoneme::K, encode("AE1"), phoneme::T];
+        let result = RhymeAnalyzer::analyze(&cat, &cat);
+        assert_eq!(result.rhyme_type, "identity");
+    }
+
+    #[test]
+    fn no_rhyme_completely_different() {
+        let cat = vec![phoneme::K, encode("AE1"), phoneme::T];
+        let sheep = vec![phoneme::SH, encode("IY1"), phoneme::P];
+        let result = RhymeAnalyzer::analyze(&cat, &sheep);
+        assert!(
+            result.rhyme_type == "none" || result.confidence < 0.5,
+            "got type={}, conf={}",
+            result.rhyme_type,
+            result.confidence
+        );
+    }
+
+    #[test]
+    fn best_rhyme_picks_strongest_variant() {
+        let a = vec![vec![phoneme::K, encode("AE1"), phoneme::T]];
+        let b = vec![
+            vec![phoneme::SH, encode("IY1"), phoneme::P], // bad match
+            vec![phoneme::B, encode("AE1"), phoneme::T],  // perfect
+        ];
+        let result = RhymeAnalyzer::best_rhyme(&a, &b);
+        assert_eq!(result.rhyme_type, "perfect");
+    }
+
+    // ── Helpers ──────────────────────────────────────────────────────────
+
+    #[test]
+    fn ending_consonants_match_fn() {
+        // Same consonants after nucleus
+        let a = vec![encode("AE0"), phoneme::N, phoneme::T]; // _NT
+        let b = vec![encode("IH0"), phoneme::N, phoneme::T]; // _NT
+        assert!(ending_consonants_match(&a, &b));
+
+        // Different consonants
+        let c = vec![encode("AE0"), phoneme::N, phoneme::K]; // _NK
+        assert!(!ending_consonants_match(&a, &c));
+    }
+
+    #[test]
+    fn compute_tail_similarity_identical() {
+        let a = vec![encode("AE0"), phoneme::T];
+        assert_eq!(compute_tail_similarity(&a, &a), 1.0);
+    }
+
+    #[test]
+    fn compute_tail_similarity_empty() {
+        assert_eq!(compute_tail_similarity(&[], &[]), 1.0);
+    }
+
+    #[test]
+    fn is_suffix_fn() {
+        let shorter = vec![encode("AE0"), phoneme::T];
+        let longer = vec![phoneme::K, encode("AE0"), phoneme::T];
+        assert!(is_suffix(&shorter, &longer));
+        assert!(!is_suffix(&longer, &shorter)); // longer can't be suffix of shorter
+    }
+
+    #[test]
+    fn round4_fn() {
+        assert_eq!(round4(0.12345), 0.1235);
+        assert_eq!(round4(1.0), 1.0);
+    }
+}
