@@ -556,6 +556,16 @@ mod tests {
     }
 
     #[test]
+    fn decode_all_returns_static_strs() {
+        let input = vec![K, encode("AE1"), T];
+        let decoded = decode_all(&input);
+        assert_eq!(decoded, vec!["K", "AE1", "T"]);
+
+        // Empty input
+        assert_eq!(decode_all(&[]), Vec::<&str>::new());
+    }
+
+    #[test]
     fn encode_strings_owned() {
         let input = vec!["HH".to_string(), "AH0".to_string()];
         let encoded = encode_strings(&input);
@@ -573,10 +583,42 @@ mod tests {
     }
 
     #[test]
+    fn encode_stress_zero_arm_explicit() {
+        // Verify stress 0 encodes to the base ID (not offset)
+        assert_eq!(encode("AA0"), AA);
+        assert_eq!(encode("UW0"), UW);
+        // And that it differs from stress 1 and 2
+        assert_ne!(encode("AA0"), encode("AA1"));
+        assert_ne!(encode("AA0"), encode("AA2"));
+    }
+
+    #[test]
     fn decode_invalid_ids() {
         assert_eq!(decode(0), "");
         assert_eq!(decode(255), "");
         assert_eq!(decode(120), ""); // just past UW2 (119)
+    }
+
+    #[test]
+    fn boundary_id_120_is_out_of_range() {
+        // ID 120 is one past the valid range (UW2 = 119)
+        assert!(!is_vowel(120));
+        assert_eq!(stress(120), 0);
+        assert_eq!(strip(120), 120); // passes through unchanged
+    }
+
+    #[test]
+    fn stripped_table_stress2_boundary() {
+        // UW2 is the highest valid ID (119). Verify the STRIPPED table
+        // correctly handles the stress-2 offset math at the boundary.
+        let uw2 = encode("UW2");
+        assert_eq!(uw2, 119);
+        assert_eq!(STRIPPED[uw2 as usize], UW);
+
+        // Also verify AA2 (lowest stress-2 vowel)
+        let aa2 = encode("AA2");
+        assert_eq!(aa2, 105);
+        assert_eq!(STRIPPED[aa2 as usize], AA);
     }
 
     #[test]
@@ -592,5 +634,15 @@ mod tests {
         assert!(is_valid_base("AA1"));
         assert!(is_valid_base("AA"));
         assert!(!is_valid_base("XX3"));
+    }
+
+    #[test]
+    fn is_valid_base_short_input() {
+        // "B" is valid (consonant, no digit to strip)
+        assert!(is_valid_base("B"));
+        // "B0" — 2 chars, ends with digit, stripped to "B" which is valid
+        assert!(is_valid_base("B0"));
+        // Single digit — stripped to empty, invalid
+        assert!(!is_valid_base("0"));
     }
 }
