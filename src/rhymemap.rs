@@ -413,3 +413,100 @@ pub struct PatternMember {
     pub phoneme_indices: Vec<usize>,
     pub matched_phonemes: Vec<String>,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Arc;
+
+    fn make_analyzer() -> RhymeMapAnalyzer {
+        RhymeMapAnalyzer::new(Arc::new(crate::dict::CmuDict::load()))
+    }
+
+    #[test]
+    fn analyze_finds_patterns_in_rhyming_couplet() {
+        let a = make_analyzer();
+        let lines = vec![
+            "the cat sat on the mat".to_string(),
+            "the bat sat on the hat".to_string(),
+        ];
+        let result = a.analyze(&lines, &RhymeMapOptions::default());
+        assert!(!result.patterns.is_empty());
+        assert_eq!(result.lines.len(), 2);
+    }
+
+    #[test]
+    fn analyze_words_are_tracked() {
+        let a = make_analyzer();
+        let lines = vec!["hello world".to_string()];
+        let result = a.analyze(&lines, &RhymeMapOptions::default());
+        assert_eq!(result.words.len(), 2);
+        assert_eq!(result.words[0].line, 0);
+        assert_eq!(result.words[0].position, 0);
+        assert_eq!(result.words[1].position, 1);
+    }
+
+    #[test]
+    fn analyze_empty_lines() {
+        let a = make_analyzer();
+        let result = a.analyze(&[], &RhymeMapOptions::default());
+        assert!(result.words.is_empty());
+        assert!(result.patterns.is_empty());
+    }
+
+    #[test]
+    fn patterns_sorted_by_score_desc() {
+        let a = make_analyzer();
+        let lines = vec![
+            "the cat sat on the mat".to_string(),
+            "the bat sat on the hat".to_string(),
+        ];
+        let result = a.analyze(&lines, &RhymeMapOptions::default());
+        for w in result.patterns.windows(2) {
+            assert!(w[0].score >= w[1].score);
+        }
+    }
+
+    #[test]
+    fn max_patterns_option_caps_output() {
+        let a = make_analyzer();
+        let lines = vec![
+            "the cat sat on the mat".to_string(),
+            "the bat sat on the hat".to_string(),
+        ];
+        let opts = RhymeMapOptions {
+            max_patterns: 3,
+            ..RhymeMapOptions::default()
+        };
+        let result = a.analyze(&lines, &opts);
+        assert!(result.patterns.len() <= 3);
+    }
+
+    #[test]
+    fn pattern_ids_are_sequential() {
+        let a = make_analyzer();
+        let lines = vec![
+            "the cat sat on the mat".to_string(),
+            "the bat sat on the hat".to_string(),
+        ];
+        let result = a.analyze(&lines, &RhymeMapOptions::default());
+        for (i, p) in result.patterns.iter().enumerate() {
+            assert_eq!(p.id, i);
+        }
+    }
+
+    #[test]
+    fn tokenize_handles_hyphens_and_g_drops() {
+        let tokens = tokenize("well-known runnin'");
+        assert_eq!(tokens, vec!["well-known", "runnin'"]);
+    }
+
+    #[test]
+    fn unknown_words_marked() {
+        let a = make_analyzer();
+        let lines = vec!["xyzzyplugh".to_string()];
+        let result = a.analyze(&lines, &RhymeMapOptions::default());
+        assert_eq!(result.words.len(), 1);
+        assert!(!result.words[0].in_dictionary);
+    }
+}
