@@ -57,3 +57,69 @@ pub fn levenshtein(source: &[u8], target: &[u8]) -> usize {
     }
     row[s_len]
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn identical_slices() {
+        assert_eq!(levenshtein(&[1, 2, 3], &[1, 2, 3]), 0);
+    }
+
+    #[test]
+    fn both_empty() {
+        assert_eq!(levenshtein(&[], &[]), 0);
+    }
+
+    #[test]
+    fn one_empty() {
+        assert_eq!(levenshtein(&[], &[1, 2, 3]), 3);
+        assert_eq!(levenshtein(&[1, 2, 3], &[]), 3);
+    }
+
+    #[test]
+    fn single_substitution() {
+        assert_eq!(levenshtein(&[1, 2, 3], &[1, 9, 3]), 1);
+    }
+
+    #[test]
+    fn single_insertion() {
+        assert_eq!(levenshtein(&[1, 2, 3], &[1, 2, 9, 3]), 1);
+    }
+
+    #[test]
+    fn single_deletion() {
+        assert_eq!(levenshtein(&[1, 2, 3], &[1, 3]), 1);
+    }
+
+    #[test]
+    fn completely_different() {
+        assert_eq!(levenshtein(&[1, 2, 3], &[4, 5, 6]), 3);
+    }
+
+    #[test]
+    fn argument_order_irrelevant() {
+        let a = &[1, 2, 3, 4];
+        let b = &[1, 9, 3];
+        assert_eq!(levenshtein(a, b), levenshtein(b, a));
+    }
+
+    #[test]
+    fn single_element_slices() {
+        assert_eq!(levenshtein(&[1], &[1]), 0);
+        assert_eq!(levenshtein(&[1], &[2]), 1);
+    }
+
+    #[test]
+    fn heap_fallback_path() {
+        // Force the heap path by exceeding STACK_CAP
+        let a: Vec<u8> = (0..33).collect();
+        let b: Vec<u8> = (0..33).collect();
+        assert_eq!(levenshtein(&a, &b), 0);
+
+        let mut c = a.clone();
+        c[16] = 255;
+        assert_eq!(levenshtein(&a, &c), 1);
+    }
+}
