@@ -181,3 +181,196 @@ fn patch_g_drop(phonemes: &mut Vec<u8>) {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::phoneme;
+
+    // ── Dictionary loading ──────────────────────────────────────────────
+
+    #[test]
+    fn dict_loads_with_entries() {
+        let dict = CmuDict::load();
+        assert!(dict.entry_count() > 100_000, "should have 100K+ entries");
+    }
+
+    #[test]
+    fn get_keys_matches_entry_count() {
+        let dict = CmuDict::load();
+        assert_eq!(dict.get_keys().len(), dict.entry_count());
+    }
+
+    // ── Lookup ──────────────────────────────────────────────────────────
+
+    #[test]
+    fn lookup_known_word() {
+        let dict = CmuDict::load();
+        let result = dict.lookup("hello");
+        assert!(result.is_some());
+        let variants = result.unwrap();
+        assert!(!variants.is_empty());
+        assert!(variants[0].len() > 2, "HELLO should have >2 phonemes");
+    }
+
+    #[test]
+    fn lookup_case_insensitive() {
+        let dict = CmuDict::load();
+        let lower = dict.lookup("cat");
+        let upper = dict.lookup("CAT");
+        let mixed = dict.lookup("Cat");
+        assert!(lower.is_some());
+        assert_eq!(lower, upper);
+        assert_eq!(lower, mixed);
+    }
+
+    #[test]
+    fn lookup_nonexistent_word() {
+        let dict = CmuDict::load();
+        assert!(dict.lookup("xyzzyplugh").is_none());
+    }
+
+    #[test]
+    fn lookup_word_with_multiple_variants() {
+        let dict = CmuDict::load();
+        // THE has multiple pronunciations in CMUdict
+        let result = dict.lookup("the");
+        assert!(result.is_some());
+        let variants = result.unwrap();
+        assert!(variants.len() >= 2, "THE should have multiple variants");
+    }
+
+    // ── Normalize ───────────────────────────────────────────────────────
+
+    #[test]
+    fn normalize_uppercases() {
+        assert_eq!(CmuDict::normalize("hello"), "HELLO");
+    }
+
+    #[test]
+    fn normalize_preserves_apostrophe_and_hyphen() {
+        assert_eq!(CmuDict::normalize("don't"), "DON'T");
+        assert_eq!(CmuDict::normalize("well-known"), "WELL-KNOWN");
+    }
+
+    #[test]
+    fn normalize_strips_other_punctuation() {
+        assert_eq!(CmuDict::normalize("hello!"), "HELLO");
+        assert_eq!(CmuDict::normalize("(test)"), "TEST");
+    }
+
+    #[test]
+    fn normalize_empty() {
+        assert_eq!(CmuDict::normalize(""), "");
+    }
+
+    #[test]
+    fn normalize_g_drop_rewrites_apostrophe() {
+        // "runnin'" should normalize to "RUNNING" (apostrophe → G)
+        assert_eq!(CmuDict::normalize("runnin'"), "RUNNING");
+        assert_eq!(CmuDict::normalize("singin'"), "SINGING");
+    }
+
+    #[test]
+    fn normalize_non_g_drop_apostrophe_preserved() {
+        // "don't" is NOT g-drop — apostrophe stays
+        assert_eq!(CmuDict::normalize("don't"), "DON'T");
+    }
+
+    // ── G-drop detection ────────────────────────────────────────────────
+
+    #[test]
+    fn g_drop_positive_cases() {
+        assert!(ends_with_g_drop("runnin'"));
+        assert!(ends_with_g_drop("singin'"));
+        assert!(ends_with_g_drop("lovin'"));
+        assert!(ends_with_g_drop("RUNNIN'"));
+    }
+
+    #[test]
+    fn g_drop_negative_cases() {
+        assert!(!ends_with_g_drop("don't"));
+        assert!(!ends_with_g_drop("hello"));
+        assert!(!ends_with_g_drop("in'")); // too short — no letters before "in'"
+        assert!(!ends_with_g_drop(""));
+        assert!(!ends_with_g_drop("'"));
+    }
+
+    // ── G-drop phoneme patching ─────────────────────────────────────────
+
+    #[test]
+    fn patch_g_drop_replaces_ng_with_n() {
+        let mut ph = vec![
+            phoneme::R,
+            phoneme::encode("AH1"),
+            phoneme::N,
+            phoneme::IH,
+            phoneme::NG,
+        ];
+        patch_g_drop(&mut ph);
+        assert_eq!(*ph.last().unwrap(), phoneme::N);
+    }
+
+    #[test]
+    fn patch_g_drop_also_patches_ih_to_ah() {
+        // Simulating RUNNING → RUNNIN': the IH before NG should become AH
+        let mut ph = vec![phoneme::K, phoneme::IH, phoneme::NG];
+        patch_g_drop(&mut ph);
+        assert_eq!(ph[1], phoneme::AH);
+        assert_eq!(ph[2], phoneme::N);
+    }
+
+    #[test]
+    fn patch_g_drop_patches_stressed_ih2_to_ah2() {
+        let ih2 = phoneme::IH + 80; // IH with stress 2
+        let ah2 = phoneme::AH + 80;
+        let mut ph = vec![phoneme::K, ih2, phoneme::NG];
+        patch_g_drop(&mut ph);
+        assert_eq!(ph[1], ah2);
+        assert_eq!(ph[2], phoneme::N);
+    }
+
+    #[test]
+    fn patch_g_drop_no_ng_unchanged() {
+        let mut ph = vec![phoneme::K, phoneme::AE, phoneme::T];
+        let original = ph.clone();
+        patch_g_drop(&mut ph);
+        assert_eq!(ph, original);
+    }
+
+    #[test]
+    fn patch_g_drop_empty_vec() {
+        let mut ph: Vec<u8> = vec![];
+        patch_g_drop(&mut ph);
+        assert!(ph.is_empty());
+    }
+
+    #[test]
+    fn patch_g_drop_single_ng() {
+        // NG alone — no preceding vowel to patch
+        let mut ph = vec![phoneme::NG];
+        patch_g_drop(&mut ph);
+        assert_eq!(ph, vec![phoneme::N]);
+    }
+
+    // ── G-drop integration ──────────────────────────────────────────────
+
+    #[test]
+    fn lookup_g_drop_word_returns_patched_phonemes() {
+        let dict = CmuDict::load();
+        // "runnin'" should look up RUNNING and return patched phonemes
+        let result = dict.lookup("runnin'");
+        assert!(result.is_some(), "runnin' should resolve via RUNNING");
+        let phonemes = &result.unwrap()[0];
+        // Last phoneme should be N (not NG)
+        assert_eq!(*phonemes.last().unwrap(), phoneme::N);
+    }
+
+    // ── count_syllables delegate ────────────────────────────────────────
+
+    #[test]
+    fn count_syllables_delegates_correctly() {
+        let cat = vec![phoneme::K, phoneme::encode("AE1"), phoneme::T];
+        assert_eq!(CmuDict::count_syllables(&cat), 1);
+    }
+}
