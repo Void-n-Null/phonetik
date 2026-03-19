@@ -38,6 +38,7 @@ async fn main() {
         "dictionaryEntries": engine.word_count(),
     })).unwrap());
 
+    let word_count = engine.word_count();
     let state = Arc::new(AppState { engine, health_bytes });
 
     let app = Router::new()
@@ -61,7 +62,7 @@ async fn main() {
         .unwrap_or(1273);
 
     let addr = SocketAddr::from(([0, 0, 0, 0], port));
-    info!("Phonetik starting on :{port} [{} words]", phonetik::Phonetik::default().word_count());
+    info!("Phonetik starting on :{port} [{word_count} words]");
 
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
     axum::serve(listener, app).await.unwrap();

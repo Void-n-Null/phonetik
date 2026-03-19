@@ -86,14 +86,29 @@ use crate::dict::CmuDict;
 // ── Public API types ────────────────────────────────────────────────────
 
 /// The phonetic analysis engine. Create one with [`Phonetik::new()`] and
-/// call methods on it. Thread-safe — clone or wrap in `Arc` for sharing.
+/// call methods on it. Thread-safe and cheaply cloneable — all internal
+/// data is reference-counted, so `clone()` is just a handful of pointer
+/// bumps with zero allocation. Share freely across threads.
 pub struct Phonetik {
     dict: Arc<CmuDict>,
-    rhyme_index: rhyme_index::RhymeIndex,
-    slant_index: slant_index::SlantIndex,
-    near_index: near_index::NearIndex,
-    stress_analyzer: stress::StressAnalyzer,
-    rhyme_mapper: rhymemap::RhymeMapAnalyzer,
+    rhyme_index: Arc<rhyme_index::RhymeIndex>,
+    slant_index: Arc<slant_index::SlantIndex>,
+    near_index: Arc<near_index::NearIndex>,
+    stress_analyzer: Arc<stress::StressAnalyzer>,
+    rhyme_mapper: Arc<rhymemap::RhymeMapAnalyzer>,
+}
+
+impl Clone for Phonetik {
+    fn clone(&self) -> Self {
+        Self {
+            dict: self.dict.clone(),
+            rhyme_index: self.rhyme_index.clone(),
+            slant_index: self.slant_index.clone(),
+            near_index: self.near_index.clone(),
+            stress_analyzer: self.stress_analyzer.clone(),
+            rhyme_mapper: self.rhyme_mapper.clone(),
+        }
+    }
 }
 
 impl Phonetik {
@@ -116,11 +131,11 @@ impl Phonetik {
 
         Self {
             dict,
-            rhyme_index: rhyme_idx,
-            slant_index: slant_idx,
-            near_index: near_idx,
-            stress_analyzer: stress_a,
-            rhyme_mapper: rhyme_m,
+            rhyme_index: Arc::new(rhyme_idx),
+            slant_index: Arc::new(slant_idx),
+            near_index: Arc::new(near_idx),
+            stress_analyzer: Arc::new(stress_a),
+            rhyme_mapper: Arc::new(rhyme_m),
         }
     }
 
