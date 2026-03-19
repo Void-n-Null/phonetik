@@ -6,6 +6,37 @@ use crate::syllable::SyllableSplitter;
 
 use std::sync::Arc;
 
+/// Monosyllabic function words that are typically unstressed in running
+/// speech. CMUdict gives these primary stress because it stores citation
+/// forms, but in context they almost always reduce to unstressed.
+const FUNCTION_WORDS: &[&str] = &[
+    "A", "AM", "AN", "AND", "ARE", "AS", "AT", "BE", "BUT", "BY", "CAN", "DID", "DO", "FOR",
+    "FROM", "HAD", "HAS", "HAVE", "HE", "HER", "HIM", "HIS", "I", "IF", "IN", "IS", "IT", "ITS",
+    "MAY", "ME", "MY", "NOR", "NOT", "OF", "ON", "OR", "OUR", "SHALL", "SHE", "SO", "THAN", "THAT",
+    "THE", "THEE", "THEM", "THEN", "THERE", "THEY", "THY", "TILL", "TO", "UP", "US", "WAS", "WE",
+    "WERE", "WHAT", "WHEN", "WHO", "WHOM", "WILL", "WITH", "WOULD", "YE", "YET", "YOU", "YOUR",
+];
+
+/// Check if a normalized word is a monosyllabic function word.
+fn is_function_word(normalized: &str) -> bool {
+    FUNCTION_WORDS.binary_search(&normalized).is_ok()
+}
+
+/// Controls whether monosyllabic function words are demoted to unstressed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum StressMode {
+    /// Natural speech stress. Monosyllabic function words (I, the, to,
+    /// shall, etc.) are demoted to unstressed, matching how verse is
+    /// actually spoken. Use this for scansion and meter detection.
+    #[default]
+    Spoken,
+    /// Raw dictionary stress. Every word keeps the stress CMUdict assigns
+    /// in citation form. Use this for phonetic analysis where you need
+    /// the dictionary's own stress judgments.
+    Dictionary,
+}
+
 pub struct StressAnalyzer {
     dict: Arc<CmuDict>,
 }
@@ -16,6 +47,10 @@ impl StressAnalyzer {
     }
 
     pub fn analyze_line(&self, line: &str) -> LineStress {
+        self.analyze_line_with_mode(line, StressMode::default())
+    }
+
+    pub fn analyze_line_with_mode(&self, line: &str, mode: StressMode) -> LineStress {
         let tokens = tokenize(line);
         let mut words = Vec::with_capacity(tokens.len());
         let mut full_pattern = Vec::new();
@@ -27,7 +62,18 @@ impl StressAnalyzer {
             }
             if let Some(lookup) = self.dict.lookup(token) {
                 let phonemes = &lookup[0];
-                let stresses = phoneme::extract_stresses(phonemes);
+                let mut stresses = phoneme::extract_stresses(phonemes);
+
+                // In Spoken mode, demote monosyllabic function words to
+                // unstressed. CMUdict gives "SHALL" stress 1 (citation
+                // form) but in verse it's typically unstressed.
+                if mode == StressMode::Spoken
+                    && stresses.len() == 1
+                    && is_function_word(&normalized)
+                {
+                    stresses[0] = 0;
+                }
+
                 let display = SyllableSplitter::stress_display(token, &stresses);
                 full_pattern.extend_from_slice(&stresses);
                 words.push(WordStress {
@@ -265,5 +311,48 @@ mod tests {
         let a = make_analyzer();
         let result = a.analyze_line("hello");
         assert!(!result.stressed_display.is_empty());
+    }
+
+    // ── Function word demotion ──────────────────────────────────────────
+
+    #[test]
+    fn spoken_mode_demotes_function_words() {
+        let a = make_analyzer();
+        let result =
+            a.analyze_line_with_mode("shall I compare thee to a summer's day", StressMode::Spoken);
+        // "shall", "I", "thee", "to", "a" should all be unstressed
+        assert_eq!(result.words[0].stresses, vec![0]); // shall
+        assert_eq!(result.words[1].stresses, vec![0]); // I
+        assert_eq!(result.words[3].stresses, vec![0]); // thee
+        assert_eq!(result.words[4].stresses, vec![0]); // to
+        assert_eq!(result.words[5].stresses, vec![0]); // a
+    }
+
+    #[test]
+    fn dictionary_mode_preserves_all_stress() {
+        let a = make_analyzer();
+        let result = a.analyze_line_with_mode(
+            "shall I compare thee to a summer's day",
+            StressMode::Dictionary,
+        );
+        // "shall" and "I" should keep their dictionary stress
+        assert_eq!(result.words[0].stresses, vec![1]); // shall
+        assert_eq!(result.words[1].stresses, vec![1]); // I
+    }
+
+    #[test]
+    fn spoken_mode_is_default() {
+        let a = make_analyzer();
+        let spoken = a.analyze_line_with_mode("shall I", StressMode::Spoken);
+        let default = a.analyze_line("shall I");
+        assert_eq!(spoken.binary_pattern, default.binary_pattern);
+    }
+
+    #[test]
+    fn function_word_list_is_sorted() {
+        // binary_search requires sorted input
+        for w in super::FUNCTION_WORDS.windows(2) {
+            assert!(w[0] < w[1], "{} should come before {}", w[0], w[1]);
+        }
     }
 }

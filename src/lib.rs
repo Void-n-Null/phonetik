@@ -87,6 +87,7 @@ use std::sync::Arc;
 use serde::Serialize;
 
 use crate::dict::CmuDict;
+pub use crate::stress::StressMode;
 
 // ── Public API types ────────────────────────────────────────────────────
 
@@ -319,13 +320,26 @@ impl Phonetik {
     /// Perform scansion on a line of text — identify its stress pattern,
     /// meter (e.g. iambic pentameter), and syllable count.
     ///
+    /// Uses [`StressMode::Spoken`] by default, which demotes function
+    /// words (I, the, to, shall, etc.) to unstressed — matching how
+    /// verse is naturally read aloud. Use [`scan_with_mode`] for raw
+    /// dictionary stress.
+    ///
     /// ```rust
     /// # let ph = phonetik::Phonetik::new();
     /// let scan = ph.scan("shall I compare thee to a summer's day");
     /// assert_eq!(scan.syllable_count, 10); // iambic pentameter
     /// ```
     pub fn scan(&self, line: &str) -> LineScan {
-        let analysis = self.stress_analyzer.analyze_line(line);
+        self.scan_with_mode(line, StressMode::Spoken)
+    }
+
+    /// Perform scansion with an explicit stress mode.
+    ///
+    /// - [`StressMode::Spoken`] — natural speech stress (default for [`scan`]).
+    /// - [`StressMode::Dictionary`] — raw CMUdict citation stress.
+    pub fn scan_with_mode(&self, line: &str, mode: StressMode) -> LineScan {
+        let analysis = self.stress_analyzer.analyze_line_with_mode(line, mode);
         let meter_result = meter::MeterDetector::detect(&analysis.binary_pattern);
         let visual = format_stress_visual(&analysis.binary_pattern);
 
