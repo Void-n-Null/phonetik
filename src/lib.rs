@@ -316,7 +316,8 @@ impl Phonetik {
 
     // ── Prosody analysis ────────────────────────────────────────────────
 
-    /// Scan a line of text for stress pattern, meter, and syllable count.
+    /// Perform scansion on a line of text — identify its stress pattern,
+    /// meter (e.g. iambic pentameter), and syllable count.
     ///
     /// ```rust
     /// # let ph = phonetik::Phonetik::new();
@@ -449,7 +450,7 @@ pub enum RhymeType {
     None,
 }
 
-/// Stress and meter analysis of a line of text.
+/// Result of scansion — stress and meter analysis of a line of text.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LineScan {
