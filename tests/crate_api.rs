@@ -175,7 +175,7 @@ fn rhyme_match_fields_are_populated() {
 #[test]
 fn scan_iambic_pentameter() {
     let p = Phonetik::new();
-    let scan: LineScan = p.scan("shall I compare thee to a summer's day");
+    let scan: LineScan = p.scan("uneasy lies the head that wears the crown");
     assert_eq!(scan.syllable_count, 10);
     assert!(!scan.visual.is_empty());
 

@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-03-19
+
+### Added
+
+- `StressMode` enum (`Spoken` / `Dictionary`) controlling function word stress.
+- `scan_with_mode()` method for explicit stress mode selection.
+- Monosyllabic function words (I, the, to, shall, etc.) demoted to unstressed in default `Spoken` mode, fixing iambic pentameter detection for Shakespeare and other formal verse.
+
+### Changed
+
+- `scan()` now defaults to `StressMode::Spoken`. Previous behavior available via `scan_with_mode(line, StressMode::Dictionary)`.
+
 ## [0.2.0] - 2026-03-19
 
 ### Added
@@ -27,5 +39,6 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 Initial release.
 
+[0.3.0]: https://github.com/Void-n-Null/phonetik/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/Void-n-Null/phonetik/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/Void-n-Null/phonetik/releases/tag/v0.1.0

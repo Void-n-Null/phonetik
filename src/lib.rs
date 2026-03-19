@@ -20,9 +20,9 @@
 //!     println!("  {} ({:?}, {:.0}%)", r.word, r.rhyme_type, r.confidence * 100.0);
 //! }
 //!
-//! // Scan a line of verse
-//! let scan = ph.scan("shall I compare thee to a summer's day");
-//! println!("{} — {} ({})", scan.stressed_display, scan.meter.name, scan.meter.regularity);
+    //! // Scan a line of verse
+    //! let scan = ph.scan("uneasy lies the head that wears the crown");
+    //! println!("{} — {} ({})", scan.stressed_display, scan.meter.name, scan.meter.regularity);
 //!
 //! // Compare two words
 //! let cmp = ph.compare("cat", "bat").unwrap();
@@ -327,7 +327,7 @@ impl Phonetik {
     ///
     /// ```rust
     /// # let ph = phonetik::Phonetik::new();
-    /// let scan = ph.scan("shall I compare thee to a summer's day");
+    /// let scan = ph.scan("uneasy lies the head that wears the crown");
     /// assert_eq!(scan.syllable_count, 10); // iambic pentameter
     /// ```
     pub fn scan(&self, line: &str) -> LineScan {
@@ -700,7 +700,7 @@ mod tests {
     #[test]
     fn scan_iambic_pentameter() {
         let p = ph();
-        let scan = p.scan("shall I compare thee to a summer's day");
+        let scan = p.scan("uneasy lies the head that wears the crown");
         assert_eq!(scan.syllable_count, 10);
         assert!(scan.meter.name.contains("iambic"));
         assert!(!scan.visual.is_empty());

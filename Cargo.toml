@@ -1,6 +1,6 @@
 [package]
 name = "phonetik"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2024"
 description = "Phonetic analysis engine for English. Rhyme detection, stress scanning, meter analysis, and syllable counting with a 126K-word embedded dictionary."
 license = "MIT"

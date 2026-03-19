@@ -45,9 +45,9 @@ for r in ph.rhymes("love", 10) {
 // GROOVE (Slant, 60%)
 
 // Meter
-let scan = ph.scan("shall I compare thee to a summer's day");
+let scan = ph.scan("uneasy lies the head that wears the crown");
 println!("{} — {}", scan.visual, scan.meter.name);
-// / / x / / / x / x / — iambic pentameter
+// x / x / x / x / x / — iambic pentameter
 
 // Comparison
 let cmp = ph.compare("cat", "bat").unwrap();
