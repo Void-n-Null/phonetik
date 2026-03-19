@@ -157,3 +157,98 @@ fn build_syllables(word: &str, nuclei: &[(usize, usize)]) -> Vec<String> {
         .map(|i| chars[boundaries[i]..boundaries[i + 1]].iter().collect())
         .collect()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn word_stress(word: &str, stresses: &[i32]) -> WordStress {
+        WordStress {
+            word: word.to_string(),
+            normalized: word.to_uppercase(),
+            phonemes: vec![],
+            stresses: stresses.to_vec(),
+            in_dictionary: true,
+            display: String::new(),
+        }
+    }
+
+    #[test]
+    fn split_empty_and_single_syllable_words() {
+        assert_eq!(SyllableSplitter::split("", 1), vec![""]);
+        assert_eq!(SyllableSplitter::split("cat", 1), vec!["cat"]);
+        assert_eq!(SyllableSplitter::split("cat", 0), vec!["cat"]);
+    }
+
+    #[test]
+    fn split_basic_multi_syllable_words() {
+        assert_eq!(SyllableSplitter::split("hello", 2), vec!["hel", "lo"]);
+        assert_eq!(SyllableSplitter::split("summer", 2), vec!["sum", "mer"]);
+    }
+
+    #[test]
+    fn stress_display_uses_case_and_hyphens() {
+        assert_eq!(SyllableSplitter::stress_display("hello", &[0, 1]), "hel-LO");
+        assert_eq!(
+            SyllableSplitter::stress_display("summer", &[1, 0]),
+            "SUM-mer"
+        );
+    }
+
+    #[test]
+    fn format_line_joins_words() {
+        let words = vec![
+            word_stress("hello", &[0, 1]),
+            word_stress("summer", &[1, 0]),
+        ];
+        assert_eq!(SyllableSplitter::format_line(&words), "hel-LO SUM-mer");
+    }
+
+    #[test]
+    fn vowel_detection_is_case_insensitive() {
+        assert!(is_vowel('a'));
+        assert!(is_vowel('A'));
+        assert!(is_vowel('y'));
+        assert!(!is_vowel('b'));
+    }
+
+    #[test]
+    fn find_nuclei_handles_basic_words_and_silent_e() {
+        assert_eq!(find_nuclei("cat"), vec![(1, 2)]);
+        assert_eq!(find_nuclei("make"), vec![(1, 2)]);
+        assert_eq!(find_nuclei("hello"), vec![(1, 2), (4, 5)]);
+    }
+
+    #[test]
+    fn find_nuclei_falls_back_for_words_without_vowels() {
+        assert_eq!(find_nuclei("rhythms"), vec![(2, 3)]);
+        assert_eq!(find_nuclei("brrr"), vec![(0, 4)]);
+    }
+
+    #[test]
+    fn merge_nuclei_reduces_to_target() {
+        let nuclei = vec![(0, 1), (2, 3), (5, 6)];
+        assert_eq!(merge_nuclei(nuclei, 2), vec![(0, 3), (5, 6)]);
+    }
+
+    #[test]
+    fn split_nuclei_expands_wide_nucleus() {
+        let nuclei = vec![(0, 4)];
+        assert_eq!(split_nuclei(nuclei, 2), vec![(0, 2), (2, 4)]);
+    }
+
+    #[test]
+    fn split_nuclei_stops_when_nuclei_too_narrow() {
+        let nuclei = vec![(0, 1)];
+        assert_eq!(split_nuclei(nuclei.clone(), 2), nuclei);
+    }
+
+    #[test]
+    fn build_syllables_uses_gap_boundaries() {
+        let nuclei = vec![(1, 2), (4, 5)];
+        assert_eq!(build_syllables("hello", &nuclei), vec!["hel", "lo"]);
+
+        let wider_gap = vec![(1, 2), (5, 6)];
+        assert_eq!(build_syllables("camera", &wider_gap), vec!["cam", "era"]);
+    }
+}
