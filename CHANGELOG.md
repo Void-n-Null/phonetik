@@ -4,6 +4,23 @@ All notable changes to this project will be documented in this file.
 
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.2] - 2026-03-19
+
+### Added
+
+- `mcp` module and `phonetik-mcp` binary: MCP (Model Context Protocol) stdio transport exposing phonetik as AI-callable tools. `cargo install phonetik` and point any MCP client at `phonetik-mcp`.
+- Tools: `lookup`, `rhymes`, `scan`, `compare`, `analyze_document`.
+- `mcp` feature flag (enabled by default). Disable with `default-features = false` for library-only use.
+
+## [0.3.1] - 2026-03-19
+
+### Added
+
+- `Phonetik::analyze_document()`, `DocumentMetadata`, `DocumentSummary`, `DocumentLineMetadata`, `DocumentDominantMeter`, `DocumentAnalyzeOptions`.
+- `POST /document` server endpoint for full-document prosody analysis.
+- `DOCUMENT_METADATA_VERSION` constant for forward-compatible schema evolution.
+- Shared `build_line_scan` internal helper, deduplicating scan construction between `scan()` and `analyze_document()`.
+
 ## [0.3.0] - 2026-03-19
 
 ### Added
@@ -39,6 +56,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 Initial release.
 
+[0.3.2]: https://github.com/Void-n-Null/phonetik/compare/v0.3.1...v0.3.2
+[0.3.1]: https://github.com/Void-n-Null/phonetik/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/Void-n-Null/phonetik/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/Void-n-Null/phonetik/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/Void-n-Null/phonetik/releases/tag/v0.1.0

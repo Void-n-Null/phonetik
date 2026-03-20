@@ -82,6 +82,9 @@ pub mod phoneme;
 #[cfg(feature = "server")]
 pub mod server;
 
+#[cfg(feature = "mcp")]
+pub mod mcp;
+
 use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};

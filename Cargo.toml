@@ -1,6 +1,6 @@
 [package]
 name = "phonetik"
-version = "0.3.1"
+version = "0.3.2"
 edition = "2024"
 description = "Phonetic analysis engine for English. Rhyme detection, stress scanning, meter analysis, and syllable counting with a 126K-word embedded dictionary."
 license = "MIT"
@@ -24,9 +24,15 @@ name = "phonetik-server"
 path = "src/main.rs"
 required-features = ["server"]
 
+[[bin]]
+name = "phonetik-mcp"
+path = "src/mcp_main.rs"
+required-features = ["mcp"]
+
 [features]
-default = ["server"]
+default = ["server", "mcp"]
 server = ["dep:axum", "dep:tokio", "dep:tower-http", "dep:tracing", "dep:tracing-subscriber", "dep:bytes"]
+mcp = []
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }

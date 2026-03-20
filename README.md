@@ -18,14 +18,16 @@ No files to download. No API keys. No runtime dependencies. `Phonetik::new()` an
 
 ```toml
 [dependencies]
-phonetik = "0.1"
+phonetik = "0.3"
 ```
 
-Or to run the HTTP server:
+Or install the binaries:
 
 ```
 cargo install phonetik
 ```
+
+This gives you `phonetik-server` (HTTP API) and `phonetik-mcp` (MCP tool server).
 
 ## Usage
 
@@ -78,13 +80,35 @@ phonetik-server
 # Phonetik starting on :1273 [126052 words]
 ```
 
-Endpoints: `/health`, `/syllables`, `/syllable-counts`, `/rhymes`, `/rhymes/perfect`, `/rhymes/slant`, `/rhymes/near`, `/compare`, `/scan`, `/rhymemap`
+Endpoints: `/health`, `/syllables`, `/syllable-counts`, `/rhymes`, `/rhymes/perfect`, `/rhymes/slant`, `/rhymes/near`, `/compare`, `/scan`, `/rhymemap`, `/document`
 
-Disable the server feature for library-only use (drops axum, tokio, etc.):
+## MCP
+
+phonetik includes an MCP (Model Context Protocol) server so AI assistants can use it as a tool. Runs over stdio — no network, no auth.
+
+```
+cargo install phonetik
+```
+
+Add to your MCP client config (Claude Code, Cursor, etc.):
+
+```json
+{
+  "phonetik": {
+    "command": "phonetik-mcp"
+  }
+}
+```
+
+Tools: `lookup`, `rhymes`, `scan`, `compare`, `analyze_document`
+
+## Feature flags
+
+Both `server` and `mcp` are enabled by default. For library-only use:
 
 ```toml
 [dependencies]
-phonetik = { version = "0.1", default-features = false }
+phonetik = { version = "0.3", default-features = false }
 ```
 
 ## License
