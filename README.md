@@ -4,6 +4,8 @@ A Rust library and HTTP server for English phonetic analysis. Rhyme detection, s
 
 No files to download. No API keys. No runtime dependencies. `Phonetik::new()` and go.
 
+[![Phonetik MCP server](https://glama.ai/mcp/servers/Void-n-Null/phonetik/badges/card.svg)](https://glama.ai/mcp/servers/Void-n-Null/phonetik)
+
 ## What it does
 
 - **Rhyme finding** — perfect, slant, and near rhymes with confidence scores
